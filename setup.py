@@ -83,14 +83,14 @@ if sys.version_info < (2, 7):
 
 
 setup(
-    name='ConfigArgParse',
-    version="0.11.0",
+    name='ConfigArgParseB',
+    version="0.12.0",
     description='A drop-in replacement for argparse that allows options to '
                 'also be set via config files and/or environment variables.',
     long_description=long_description,
     author='Zorro',
     author_email='zorro3.github@gmail.com',
-    url='https://github.com/bw2/ConfigArgParse',
+    url='https://github.com/bengranett/ConfigArgParseB',
     py_modules=['configargparse'],
     include_package_data=True,
     license="MIT",

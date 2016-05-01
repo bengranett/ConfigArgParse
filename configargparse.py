@@ -167,9 +167,9 @@ class DefaultConfigFileParser(ConfigFileParser):
                 key = key_value_match.group("key")
                 value = key_value_match.group("value")
 
-                if value.startswith("[") and value.endswith("]"):
-                    # handle special case of lists
-                    value = [elem.strip() for elem in value[1:-1].split(",")]
+                # If there are multiple words treat it as a list.
+                if " " in value:
+                    value = value.split()
 
                 items[key] = value
                 continue
@@ -181,15 +181,27 @@ class DefaultConfigFileParser(ConfigFileParser):
     def serialize(self, items):
         """Does the inverse of config parsing by taking parsed values and
         converting them back to a string representing config file contents.
+
+        Args:
+            items: an OrderedDict with items to be written to the config file
+        Returns:
+            contents of config file as a string
         """
         r = StringIO()
         for key, value in items.items():
-            if type(value) == list:
-                # handle special case of lists
-                value = "["+", ".join(map(str, value))+"]"
-            r.write("%s = %s\n" % (key, value))
+            if type(value) == type(items):
+                if len(value)==0: continue
+                r.write("# "+"-"*len(key)+" #\n")
+                r.write("# %s #\n"%key)
+                r.write("# "+"-"*len(key)+" #\n")
+                r.write(self.serialize(value))
+                r.write("\n")
+            else:
+                v,help = value
+                if type(v) is list or type(v) is tuple:
+                    v = " ".join([str(a) for a in v])
+                r.write("{:<12s} = {:<24s}\t# {:s}\n".format(key, str(v), help))
         return r.getvalue()
-
 
 class YAMLConfigFileParser(ConfigFileParser):
     """Parses YAML config files. Depends on the PyYAML module.
@@ -293,9 +305,7 @@ class ArgumentParser(argparse.ArgumentParser):
         config_arg_help_message="config file path",
 
         args_for_writing_out_config_file=[],
-        write_out_config_file_arg_help_message="takes the current command line "
-            "args and writes them out to a config file at the given path, then "
-            "exits",
+        write_out_config_file_arg_help_message="write out the current config to a file.",
         allow_abbrev=True,  # new in python 3.5
         ):
 
@@ -343,7 +353,7 @@ class ArgumentParser(argparse.ArgumentParser):
                 args to use for specifying a config file output path. If
                 provided, these args cause configargparse to write out a config
                 file with settings based on the other provided commandline args,
-                environment variants and defaults, and then to exit.
+                environment variants and defaults.
                 (eg. ["-w", "--write-out-config-file"]). Default: []
             write_out_config_file_arg_help_message: The help message to use for
                 the args in args_for_writing_out_config_file.
@@ -554,6 +564,10 @@ class ArgumentParser(argparse.ArgumentParser):
         # parse all args (including commandline, config file, and env var)
         namespace, unknown_args = argparse.ArgumentParser.parse_known_args(
             self, args=args, namespace=namespace)
+
+        # store the parsed namespace
+        self.namespace = namespace
+
         # handle any args that have is_write_out_config_file_arg set to true
         user_write_out_config_file_arg_actions = [a for a in self._actions
             if getattr(a, "is_write_out_config_file_arg", False)]
@@ -563,26 +577,27 @@ class ArgumentParser(argparse.ArgumentParser):
                 # check if the user specified this arg on the commandline
                 output_file_path = getattr(namespace, action.dest, None)
                 if output_file_path:
-                    # validate the output file path
-                    try:
-                        with open(output_file_path, "w") as output_file:
-                            output_file_paths.append(output_file_path)
-                    except IOError as e:
-                        raise ValueError("Couldn't open %s for writing: %s" % (
-                            output_file_path, e))
+                    self.write_config(output_file_path)
 
-            if output_file_paths:
-                # generate the config file contents
-                config_items = self.get_items_for_config_file_output(
-                    self._source_to_settings, namespace)
-                file_contents = self._config_file_parser.serialize(config_items)
-                for output_file_path in output_file_paths:
-                    with open(output_file_path, "w") as output_file:
-                        output_file.write(file_contents)
-                if len(output_file_paths) == 1:
-                    output_file_paths = output_file_paths[0]
-                self.exit(0, "Wrote config file to " + str(output_file_paths))
         return namespace, unknown_args
+
+    def write_config(self, path):
+        """ Write out the current configuration to file. """
+        # generate the config file contents
+        config_items = self.get_items_for_config_file_output(
+            self._source_to_settings, self.namespace)
+        print config_items
+        file_contents = self._config_file_parser.serialize(config_items)
+        try:
+            if type(path) is file:
+                path.write(file_contents)
+                path.close()
+            else:
+                with open(path, "w") as output_file:
+                    output_file.write(file_contents)
+        except IOError as e:
+            raise ValueError("Couldn't open %s for writing: %s" % (
+                            output_file_path, e))
 
     def get_command_line_key_for_unknown_config_file_setting(self, key):
         """Compute a commandline arg key to be used for a config file setting
@@ -610,10 +625,16 @@ class ArgumentParser(argparse.ArgumentParser):
             or lists
         """
         config_file_items = OrderedDict()
+        for action in self._actions:
+            if action.is_config_file_arg: continue
+            if not config_file_items.has_key(action.container.title):
+                config_file_items[action.container.title] = OrderedDict()
+
         for source, settings in source_to_settings.items():
             if source == _COMMAND_LINE_SOURCE_KEY:
                 _, existing_command_line_args = settings['']
                 for action in self._actions:
+                    if action.is_config_file_arg: continue
                     config_file_keys = self.get_possible_config_keys(action)
                     if config_file_keys and not action.is_positional_arg and \
                         already_on_command_line(existing_command_line_args,
@@ -622,7 +643,7 @@ class ArgumentParser(argparse.ArgumentParser):
                         if value is not None:
                             if type(value) is bool:
                                 value = str(value).lower()
-                            config_file_items[config_file_keys[0]] = value
+                            config_file_items[action.container.title][config_file_keys[0]] = value,action.help
 
             elif source == _ENV_VAR_SOURCE_KEY:
                 for key, (action, value) in settings.items():
@@ -630,17 +651,17 @@ class ArgumentParser(argparse.ArgumentParser):
                     if config_file_keys:
                         value = getattr(parsed_namespace, action.dest, None)
                         if value is not None:
-                            config_file_items[config_file_keys[0]] = value
+                            config_file_items[action.container.title][config_file_keys[0]] = value,action.help
             elif source.startswith(_CONFIG_FILE_SOURCE_KEY):
                 for key, (action, value) in settings.items():
-                    config_file_items[key] = value
+                    config_file_items[action.container.title][key] = value,action.help
             elif source == _DEFAULTS_SOURCE_KEY:
                 for key, (action, value) in settings.items():
                     config_file_keys = self.get_possible_config_keys(action)
                     if config_file_keys:
                         value = getattr(parsed_namespace, action.dest, None)
                         if value is not None:
-                            config_file_items[config_file_keys[0]] = value
+                            config_file_items[action.container.title][config_file_keys[0]] = value,action.help
         return config_file_items
 
     def convert_item_to_command_line_arg(self, action, key, value):
@@ -864,7 +885,7 @@ def add_argument(self, *args, **kwargs):
         is_write_out_config_file_arg: If True, this arg will be treated as a
             config file path, and, when it is specified, will cause
             configargparse to write all current commandline args to this file
-            as config options and then exit.
+            as config options.
             Default: False
     """
 
