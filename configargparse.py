@@ -168,9 +168,9 @@ class DefaultConfigFileParser(ConfigFileParser):
                 key = key_value_match.group("key")
                 value = key_value_match.group("value")
 
-                if value.startswith("[") and value.endswith("]"):
-                    # handle special case of lists
-                    value = [elem.strip() for elem in value[1:-1].split(",")]
+                # If there are multiple words treat it as a list.
+                if " " in value:
+                    value = value.split()
 
                 items[key] = value
                 continue
@@ -182,15 +182,26 @@ class DefaultConfigFileParser(ConfigFileParser):
     def serialize(self, items):
         """Does the inverse of config parsing by taking parsed values and
         converting them back to a string representing config file contents.
+
+        Args:
+            items: an OrderedDict with items to be written to the config file
+        Returns:
+            contents of config file as a string
         """
         r = StringIO()
         for key, value in items.items():
-            if type(value) == list:
-                # handle special case of lists
-                value = "["+", ".join(value)+"]"
-            r.write("%s = %s\n" % (key, value))
+            if type(value) == type(items):
+                r.write("# "+"-"*len(key)+"#\n")
+                r.write("# %s #\n"%key)
+                r.write("# "+"-"*len(key)+"#\n")
+                r.write(self.serialize(value))
+                r.write("\n")
+            else:
+                v,help = value
+                if type(v) is list or type(v) is tuple:
+                    v = " ".join([str(a) for a in v])
+                r.write("{:<12s} = {:<24s}\t# {:s}\n".format(key, v, help))
         return r.getvalue()
-
 
 class YAMLConfigFileParser(ConfigFileParser):
     """Parses YAML config files. Depends on the PyYAML module.
@@ -294,9 +305,7 @@ class ArgumentParser(argparse.ArgumentParser):
         config_arg_help_message="config file path",
 
         args_for_writing_out_config_file=[],
-        write_out_config_file_arg_help_message="takes the current command line "
-            "args and writes them out to a config file at the given path, then "
-            "exits",
+        write_out_config_file_arg_help_message="write out the default config to a file and exit.",
         allow_abbrev=True,  # new in python 3.5
         ):
 
@@ -572,8 +581,7 @@ class ArgumentParser(argparse.ArgumentParser):
 
             if output_file_paths:
                 # generate the config file contents
-                config_items = self.get_items_for_config_file_output(
-                    self._source_to_settings, namespace)
+                config_items = self.get_items_for_config_file_output_defaults()
                 file_contents = self._config_file_parser.serialize(config_items)
                 for output_file_path in output_file_paths:
                     with open(output_file_path, "w") as output_file:
@@ -642,6 +650,27 @@ class ArgumentParser(argparse.ArgumentParser):
                             config_file_items[config_file_keys[0]] = value
         return config_file_items
 
+    def get_items_for_config_file_output_defaults(self):
+        """Converts the given settings back to a dictionary that can be passed
+        to ConfigFormatParser.serialize(..).  Includes default values only.
+
+        Returns:
+            an OrderedDict where keys are strings and values are either strings
+            or lists
+        """
+        config_file_items = OrderedDict()
+        for action in self._actions:
+            if action.default is None: continue
+            if action.default == SUPPRESS: continue
+            if not config_file_items.has_key(action.container.title):
+                config_file_items[action.container.title] = OrderedDict()
+            value = action.default
+            if type(value) is bool:
+                value = str(value).lower()
+            config_file_items[action.container.title][action.dest] = (value,action.help)
+        return config_file_items
+
+
     def convert_item_to_command_line_arg(self, action, key, value):
         """Converts a config file or env var key + value to a list of
         commandline args to append to the commandline.
@@ -668,11 +697,8 @@ class ArgumentParser(argparse.ArgumentParser):
                 self.error("Unexpected value for %s: '%s'. Expecting 'true', "
                            "'false', 'yes', or 'no'" % (key, value))
         elif type(value) == list:
-            if action is not None and type(action) != argparse._AppendAction:
-                    self.error(("%s can't be set to a list '%s' unless its "
-                        "action type is changed to 'append'") % (key, value))
+            args.append( command_line_key )
             for list_elem in value:
-                args.append( command_line_key )
                 args.append( str(list_elem) )
         elif type(value) == str:
             args.append( command_line_key )
