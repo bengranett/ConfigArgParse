@@ -191,6 +191,7 @@ class DefaultConfigFileParser(ConfigFileParser):
         r = StringIO()
         for key, value in items.items():
             if type(value) == type(items):
+                if len(value)==0: continue
                 r.write("# "+"-"*len(key)+"#\n")
                 r.write("# %s #\n"%key)
                 r.write("# "+"-"*len(key)+"#\n")
@@ -631,6 +632,7 @@ class ArgumentParser(argparse.ArgumentParser):
         """
         config_file_items = OrderedDict()
         for action in self._actions:
+            if action.is_write_out_config_file_arg or action.is_config_file_arg: continue
             if not config_file_items.has_key(action.container.title):
                 config_file_items[action.container.title] = OrderedDict()
 
@@ -638,6 +640,7 @@ class ArgumentParser(argparse.ArgumentParser):
             if source == _COMMAND_LINE_SOURCE_KEY:
                 _, existing_command_line_args = settings['']
                 for action in self._actions:
+                    if action.is_write_out_config_file_arg or action.is_config_file_arg: continue
                     config_file_keys = self.get_possible_config_keys(action)
                     if config_file_keys and not action.is_positional_arg and \
                         already_on_command_line(existing_command_line_args,
