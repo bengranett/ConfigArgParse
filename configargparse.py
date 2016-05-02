@@ -305,7 +305,7 @@ class ArgumentParser(argparse.ArgumentParser):
         config_arg_help_message="config file path",
 
         args_for_writing_out_config_file=[],
-        write_out_config_file_arg_help_message="write out the default config to a file and exit.",
+        write_out_config_file_arg_help_message="write out the current config to a file and exit.",
         allow_abbrev=True,  # new in python 3.5
         ):
 
@@ -562,6 +562,9 @@ class ArgumentParser(argparse.ArgumentParser):
         namespace, unknown_args = argparse.ArgumentParser.parse_known_args(
             self, args=args, namespace=namespace)
 
+        # store the parsed namespace
+        self.namespace = namespace
+
         # handle any args that have is_write_out_config_file_arg set to true
         user_write_out_config_file_arg_actions = [a for a in self._actions
             if getattr(a, "is_write_out_config_file_arg", False)]
@@ -581,7 +584,8 @@ class ArgumentParser(argparse.ArgumentParser):
 
             if output_file_paths:
                 # generate the config file contents
-                config_items = self.get_items_for_config_file_output_defaults()
+                config_items = self.get_items_for_config_file_output(
+                    self._source_to_settings, namespace)
                 file_contents = self._config_file_parser.serialize(config_items)
                 for output_file_path in output_file_paths:
                     with open(output_file_path, "w") as output_file:
@@ -590,6 +594,15 @@ class ArgumentParser(argparse.ArgumentParser):
                     output_file_paths = output_file_paths[0]
                 self.exit(0, "Wrote config file to " + str(output_file_paths))
         return namespace, unknown_args
+
+    def write_config(self, path):
+        """ Write out the current configuration to file. """
+        # generate the config file contents
+        config_items = self.get_items_for_config_file_output(
+            self._source_to_settings, self.namespace)
+        file_contents = self._config_file_parser.serialize(config_items)
+        with open(path, "w") as output_file:
+            output_file.write(file_contents)
 
     def get_command_line_key_for_unknown_config_file_setting(self, key):
         """Compute a commandline arg key to be used for a config file setting
@@ -617,6 +630,10 @@ class ArgumentParser(argparse.ArgumentParser):
             or lists
         """
         config_file_items = OrderedDict()
+        for action in self._actions:
+            if not config_file_items.has_key(action.container.title):
+                config_file_items[action.container.title] = OrderedDict()
+
         for source, settings in source_to_settings.items():
             if source == _COMMAND_LINE_SOURCE_KEY:
                 _, existing_command_line_args = settings['']
@@ -629,7 +646,7 @@ class ArgumentParser(argparse.ArgumentParser):
                         if value is not None:
                             if type(value) is bool:
                                 value = str(value).lower()
-                            config_file_items[config_file_keys[0]] = value
+                            config_file_items[action.container.title][config_file_keys[0]] = value,action.help
 
             elif source == _ENV_VAR_SOURCE_KEY:
                 for key, (action, value) in settings.items():
@@ -637,39 +654,18 @@ class ArgumentParser(argparse.ArgumentParser):
                     if config_file_keys:
                         value = getattr(parsed_namespace, action.dest, None)
                         if value is not None:
-                            config_file_items[config_file_keys[0]] = value
+                            config_file_items[action.container.title][config_file_keys[0]] = value,action.help
             elif source.startswith(_CONFIG_FILE_SOURCE_KEY):
                 for key, (action, value) in settings.items():
-                    config_file_items[key] = value
+                    config_file_items[action.container.title][key] = value,action.help
             elif source == _DEFAULTS_SOURCE_KEY:
                 for key, (action, value) in settings.items():
                     config_file_keys = self.get_possible_config_keys(action)
                     if config_file_keys:
                         value = getattr(parsed_namespace, action.dest, None)
                         if value is not None:
-                            config_file_items[config_file_keys[0]] = value
+                            config_file_items[action.container.title][config_file_keys[0]] = value,action.help
         return config_file_items
-
-    def get_items_for_config_file_output_defaults(self):
-        """Converts the given settings back to a dictionary that can be passed
-        to ConfigFormatParser.serialize(..).  Includes default values only.
-
-        Returns:
-            an OrderedDict where keys are strings and values are either strings
-            or lists
-        """
-        config_file_items = OrderedDict()
-        for action in self._actions:
-            if action.default is None: continue
-            if action.default == SUPPRESS: continue
-            if not config_file_items.has_key(action.container.title):
-                config_file_items[action.container.title] = OrderedDict()
-            value = action.default
-            if type(value) is bool:
-                value = str(value).lower()
-            config_file_items[action.container.title][action.dest] = (value,action.help)
-        return config_file_items
-
 
     def convert_item_to_command_line_arg(self, action, key, value):
         """Converts a config file or env var key + value to a list of
