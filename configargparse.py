@@ -575,25 +575,9 @@ class ArgumentParser(argparse.ArgumentParser):
                 # check if the user specified this arg on the commandline
                 output_file_path = getattr(namespace, action.dest, None)
                 if output_file_path:
-                    # validate the output file path
-                    try:
-                        with open(output_file_path, "w") as output_file:
-                            output_file_paths.append(output_file_path)
-                    except IOError as e:
-                        raise ValueError("Couldn't open %s for writing: %s" % (
-                            output_file_path, e))
+                    self.write_config(output_file_path)
+                    self.exit(0, "Wrote config file to " + str(output_file_path))
 
-            if output_file_paths:
-                # generate the config file contents
-                config_items = self.get_items_for_config_file_output(
-                    self._source_to_settings, namespace)
-                file_contents = self._config_file_parser.serialize(config_items)
-                for output_file_path in output_file_paths:
-                    with open(output_file_path, "w") as output_file:
-                        output_file.write(file_contents)
-                if len(output_file_paths) == 1:
-                    output_file_paths = output_file_paths[0]
-                self.exit(0, "Wrote config file to " + str(output_file_paths))
         return namespace, unknown_args
 
     def write_config(self, path):
@@ -602,8 +586,16 @@ class ArgumentParser(argparse.ArgumentParser):
         config_items = self.get_items_for_config_file_output(
             self._source_to_settings, self.namespace)
         file_contents = self._config_file_parser.serialize(config_items)
-        with open(path, "w") as output_file:
-            output_file.write(file_contents)
+        try:
+            if type(path) is file:
+                path.write(file_contents)
+                path.close()
+            else:
+                with open(path, "w") as output_file:
+                    output_file.write(file_contents)
+        except IOError as e:
+            raise ValueError("Couldn't open %s for writing: %s" % (
+                            output_file_path, e))
 
     def get_command_line_key_for_unknown_config_file_setting(self, key):
         """Compute a commandline arg key to be used for a config file setting
