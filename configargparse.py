@@ -192,16 +192,16 @@ class DefaultConfigFileParser(ConfigFileParser):
         for key, value in items.items():
             if type(value) == type(items):
                 if len(value)==0: continue
-                r.write("# "+"-"*len(key)+"#\n")
+                r.write("# "+"-"*len(key)+" #\n")
                 r.write("# %s #\n"%key)
-                r.write("# "+"-"*len(key)+"#\n")
+                r.write("# "+"-"*len(key)+" #\n")
                 r.write(self.serialize(value))
                 r.write("\n")
             else:
                 v,help = value
                 if type(v) is list or type(v) is tuple:
                     v = " ".join([str(a) for a in v])
-                r.write("{:<12s} = {:<24s}\t# {:s}\n".format(key, v, help))
+                r.write("{:<12s} = {:<24s}\t# {:s}\n".format(key, str(v), help))
         return r.getvalue()
 
 class YAMLConfigFileParser(ConfigFileParser):
@@ -566,6 +566,7 @@ class ArgumentParser(argparse.ArgumentParser):
         # store the parsed namespace
         self.namespace = namespace
 
+
         # handle any args that have is_write_out_config_file_arg set to true
         user_write_out_config_file_arg_actions = [a for a in self._actions
             if getattr(a, "is_write_out_config_file_arg", False)]
@@ -576,7 +577,6 @@ class ArgumentParser(argparse.ArgumentParser):
                 output_file_path = getattr(namespace, action.dest, None)
                 if output_file_path:
                     self.write_config(output_file_path)
-                    self.exit(0, "Wrote config file to " + str(output_file_path))
 
         return namespace, unknown_args
 
