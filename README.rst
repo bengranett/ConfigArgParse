@@ -11,6 +11,23 @@ extends argparse to add these features.
 
 |Travis CI Status for bw2/ConfigArgParse|  -- from `Travis CI <https://travis-ci.org/bw2/ConfigArgParse/>`_
 
+What's up with this fork?
+~~~~~~~~~~~~~~~~~~~~~~~~~
+-  includes the help message when writing out the config file
+-  writes section headers in the config file according to the parser groups
+-  can pass a file object in place of an output config file path:
+
+.. code:: py
+
+    parser.add_argument("-w",
+                        metavar='filename', 
+                        nargs='?',
+                        const=sys.stdout,
+                        type=configargparse.FileType('w'),
+                        help="write out config file",
+                        is_write_out_config_file_arg=True)
+
+
 Features
 ~~~~~~~~
 
