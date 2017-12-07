@@ -578,6 +578,7 @@ class ArgumentParser(argparse.ArgumentParser):
                 output_file_path = getattr(namespace, action.dest, None)
                 if output_file_path:
                     self.write_config(output_file_path)
+            sys.exit()
 
         return namespace, unknown_args
 
@@ -586,7 +587,7 @@ class ArgumentParser(argparse.ArgumentParser):
         # generate the config file contents
         config_items = self.get_items_for_config_file_output(
             self._source_to_settings, self.namespace)
-        print config_items
+        # print config_items
         file_contents = self._config_file_parser.serialize(config_items)
         try:
             if type(path) is file:
