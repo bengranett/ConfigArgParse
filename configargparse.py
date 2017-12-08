@@ -578,7 +578,7 @@ class ArgumentParser(argparse.ArgumentParser):
                 output_file_path = getattr(namespace, action.dest, None)
                 if output_file_path:
                     self.write_config(output_file_path)
-            sys.exit()
+                    sys.exit()
 
         return namespace, unknown_args
 
